@@ -1,18 +1,10 @@
-import DataUtilities.downloadFile
-import DataUtilities.extractTarGz
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
-import java.util.HashMap
-import java.util.Random
-
-import org.datavec.api.io.labels.ParentPathLabelGenerator
-import org.datavec.api.split.FileSplit
-import org.datavec.image.loader.NativeImageLoader
-import org.datavec.image.recordreader.ImageRecordReader
+import com.github.holgerbrandl.kravis.heatmap
+import com.github.holgerbrandl.kravis.spec.*
+import krangl.*
+import org.datavec.api.records.reader.impl.csv.CSVRecordReader
+import org.datavec.api.split.*
 import org.deeplearning4j.datasets.datavec.RecordReaderDataSetIterator
-import org.deeplearning4j.eval.Evaluation
-import org.deeplearning4j.nn.conf.MultiLayerConfiguration
+import org.deeplearning4j.nn.api.Model
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration
 import org.deeplearning4j.nn.conf.inputs.InputType
 import org.deeplearning4j.nn.conf.layers.ConvolutionLayer
@@ -21,21 +13,24 @@ import org.deeplearning4j.nn.conf.layers.OutputLayer
 import org.deeplearning4j.nn.conf.layers.SubsamplingLayer
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork
 import org.deeplearning4j.nn.weights.WeightInit
+import org.deeplearning4j.optimize.api.BaseTrainingListener
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener
 import org.deeplearning4j.util.ModelSerializer
 import org.nd4j.linalg.activations.Activation
-import org.nd4j.linalg.dataset.api.iterator.DataSetIterator
-import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization
-import org.nd4j.linalg.dataset.api.preprocessor.ImagePreProcessingScaler
+import org.nd4j.linalg.dataset.api.DataSet
+import org.nd4j.linalg.dataset.api.DataSetPreProcessor
 import org.nd4j.linalg.learning.config.Nesterovs
 import org.nd4j.linalg.lossfunctions.LossFunctions
 import org.nd4j.linalg.schedule.MapSchedule
 import org.nd4j.linalg.schedule.ScheduleType
-import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import java.io.*
+import java.io.File
+import java.util.*
+import kotlin.system.exitProcess
 
 /**
+ * Adopted from https://github.com/holgerbrandl/dl4j-examples/blob/master/dl4j-examples/src/main/java/org/deeplearning4j/examples/convolution/mnist/MnistClassifier.java
+ *
  * Handwritten digits image classification on MNIST dataset (99% accuracy).
  * This example will download 15 Mb of data on the first run.
  * Supervised learning best modeled by CNN.
@@ -43,12 +38,106 @@ import java.io.*
  * @author hanlon
  * @author agibsonccc
  * @author fvaleri
+ * @author holgerbrandl
  */
+
+fun createTrainRecReaderDataIterator(
+    batchSize: Int = 256,
+    maxExamples: Int = Int.MAX_VALUE
+): RecordReaderDataSetIterator {
+
+    //    val row = imageLoader.asMatrix(image)
+    //    Nd4j.getAffinityManager().ensureLocation(row, AffinityManager.Location.DEVICE)
+    //    ret = RecordConverter.toRecord(row)
+
+
+    //    val recordReader = object : CSVRecordReader() {
+    ////        val lines: List<List<String>>
+    //
+    //
+    //        init {
+    //
+    ////            lines = File(DATA_ROOT, "train.csv").readLines().map{it.split(",")}
+    ////            initialize(ListStringSplit(lines))
+    //            initialize(FileSplit(File(DATA_ROOT, "train.csv")))
+    //        }
+    //
+    //        override fun nextRecord(): Record {
+    //            return super.nextRecord()
+    //        }
+    //
+    //        protected override fun parseLine(line: String): List<Writable> {
+    //            val split: Array<String>
+    //            try {
+    ////                split = csvParser.parseLine(line)
+    //            } catch (e: IOException) {
+    //                throw RuntimeException(e)
+    //            }
+    //
+    //            val ret = ArrayList<Writable>()
+    //            for (s in listOf("1")) {
+    //                ret.add(Text(s))
+    //            }
+    //            return ret
+    //        }
+    //    }
+    //
+    //    return object : RecordReaderDataSetIterator(recordReader, batchSize, 1, 2) {
+    //        //        override fun numExamples(): Int {
+    //        //            return lines
+    //        //        }
+    //    }
+
+    // line format
+    // label,pixel0,pixel1,pixel2,pixel3,pixel4,pixel5, ... pixel783
+    val DATA_ROOT = File("${System.getProperty("user.home")}/.kaggle/competitions/digit-recognizer/")
+
+    //    val dataFile = File(DATA_ROOT, "train.csv")
+    val dataFile = File("mnist_subset.csv").also {
+        it.printWriter().let { pw ->
+            File(DATA_ROOT, "train.csv").readLines().take(100).forEach { pw.println(it) }
+            pw.close()
+        }
+    }
+
+
+    //    DataFrame.readCSV(dataFile).count("label").print()
+
+    val recordReader = CSVRecordReader(1, ',').apply {
+        initialize(FileSplit(dataFile))
+    }
+
+    val iter = RecordReaderDataSetIterator.Builder(recordReader, 10)
+        .classification(0, 10)
+        //        .preProcessor(NormalizerStandardize()).build()
+        .preProcessor(object : DataSetPreProcessor {
+            override fun preProcess(ds: DataSet) {
+                //                val zScaled = NormalizerStandardize().transform(ds)
+                ds.features = ds.features.reshape(10, 28, 28)
+            }
+        })
+        .build()
+
+
+    //    var iter2: MultiDataSetIterator = RecordReaderMultiDataSetIterator.Builder(10).addReader("mnist_reader", recordReader)
+    //        .addInput("mnist_reader", 1, 784)
+    //        .addOutputOneHot("mnist_reader", 0, 10)
+    //        .build()
+    //
+    //    iter.next().features
+
+    return iter
+}
+
+
 object MnistClassifier {
 
     private val log = LoggerFactory.getLogger(MnistClassifier::class.java)
     private val basePath = System.getProperty("java.io.tmpdir") + "/mnist"
-    private val dataUrl = "http://github.com/myleott/mnist_png/raw/master/mnist_png.tar.gz"
+    //    private val dataUrl = "http://github.com/myleott/mnist_png/raw/master/mnist_png.tar.gz"
+
+    val DATA_ROOT = File("${System.getProperty("user.home")}/.kaggle/competitions/digit-recognizer/")
+
 
     @Throws(Exception::class)
     @JvmStatic
@@ -57,40 +146,66 @@ object MnistClassifier {
         val width = 28
         val channels = 1 // single channel for grayscale images
         val outputNum = 10 // 10 digits classification
-        val batchSize = 54
         val nEpochs = 1
-        val iterations = 1
 
         val seed = 1234
         val randNumGen = Random(seed.toLong())
 
         log.info("Data load and vectorization...")
         val localFilePath = "$basePath/mnist_png.tar.gz"
-        if (downloadFile(dataUrl, localFilePath))
-            log.debug("Data downloaded from {}", dataUrl)
-        if (!File("$basePath/mnist_png").exists())
-            extractTarGz(localFilePath, basePath)
 
-        // vectorization of train data
-        val trainData = File("$basePath/mnist_png/training")
-        val trainSplit = FileSplit(trainData, NativeImageLoader.ALLOWED_FORMATS, randNumGen)
-        val labelMaker = ParentPathLabelGenerator() // parent path as the image label
-        val trainRR = ImageRecordReader(height, width, channels, labelMaker)
-        trainRR.initialize(trainSplit)
-        val trainIter = RecordReaderDataSetIterator(trainRR, batchSize, 1, outputNum)
+        if (!DATA_ROOT.isDirectory) {
+            println("Kaggle data is not yet downloaded. See REAMDE.md ")
+            exitProcess(-1)
+        }
 
-        // pixel values from 0-255 to 0-1 (min-max scaling)
-        val scaler = ImagePreProcessingScaler(0.0, 1.0)
-        scaler.fit(trainIter)
-        trainIter.preProcessor = scaler
+        val trainIter = createTrainRecReaderDataIterator()
+        //        val feature = trainIter.next().features.slice(0)
 
-        // vectorization of test data
-        val testData = File("$basePath/mnist_png/testing")
-        val testSplit = FileSplit(testData, NativeImageLoader.ALLOWED_FORMATS, randNumGen)
-        val testRR = ImageRecordReader(height, width, channels, labelMaker)
-        testRR.initialize(testSplit)
-        val testIter = RecordReaderDataSetIterator(testRR, batchSize, 1, outputNum)
-        testIter.preProcessor = scaler // same normalization for better results
+        //    // plot one of them
+        //    val next = iter.next()
+        //    val image = next.features.reshape(10, 28, 28).slice(7).toDoubleMatrix()
+        //    val heatmapData = image.withIndex()
+        //        .map { (index, data) -> DoubleCol(index.toString(), data.toList()) }.bindCols()
+        //        .addRowNumber("y")
+        //        .gather("x", "pixel_value", { except("y") }, convert = true)
+        //
+        //    heatmapData.heatmap("x", "y", "pixel_value")
+
+
+        // https://www.researchgate.net/figure/Slices-of-a-3rd-order-tensor_fig2_251235488
+        //        val koma = create(feature.reshape(10, 28, 28).slice(0).toDoubleMatrix())
+        //        plot(koma, 'b', "First Run")
+
+
+        //        feature.reshape(10, 28, 28)
+
+        //        val next = trainIt.next()
+        ////        next.
+        //
+        //        println("${next.features}")
+        //        // vectorization of train data
+        //        val trainData = File("$basePath/mnist_png/training")
+        //        val trainSplit = FileSplit(trainData, NativeImageLoader.ALLOWED_FORMATS, randNumGen)
+        //        val labelMaker = ParentPathLabelGenerator() // parent path as the image label
+        //        val trainRR = ImageRecordReader(height, width, channels, labelMaker)
+        //        trainRR.initialize(trainSplit)
+        //        val trainIter = RecordReaderDataSetIterator(trainRR, batchSize, 1, outputNum)
+        //
+        //        // pixel values from 0-255 to 0-1 (min-max scaling)
+        //        val scaler = ImagePreProcessingScaler(0.0, 1.0)
+        //        scaler.fit(trainIter)
+        //        trainIter.preProcessor = scaler
+        //
+        //        // vectorization of test data
+        //        val testData = File("$basePath/mnist_png/testing")
+        //        val testSplit = FileSplit(testData, NativeImageLoader.ALLOWED_FORMATS, randNumGen)
+        //        val testRR = ImageRecordReader(height, width, channels, labelMaker)
+        //        testRR.initialize(testSplit)
+        //        val testIter = RecordReaderDataSetIterator(testRR, batchSize, 1, outputNum)
+        //        testIter.preProcessor = scaler // same normalization for better results
+
+        // note: model configuration is just a copy from the dl4j examples
 
         log.info("Network configuration and training...")
         val lrSchedule = HashMap<Int, Double>()
@@ -131,24 +246,55 @@ object MnistClassifier {
                 .nOut(outputNum)
                 .activation(Activation.SOFTMAX)
                 .build())
-            .setInputType(InputType.convolutionalFlat(28, 28, 1)) // InputType.convolutional for normal image
+            .setInputType(InputType.convolutionalFlat(height, width, channels)) // InputType.convolutional for normal image
             .backprop(true).pretrain(false).build()
 
-        val net = MultiLayerNetwork(conf)
-        net.init()
-        net.setListeners(ScoreIterationListener(10))
+        val net = MultiLayerNetwork(conf).apply {
+            init()
+
+            addListeners(ScoreIterationListener(10))
+            addListeners(object : BaseTrainingListener() {
+                override fun onEpochEnd(model: Model?) {
+                    log.info("Completed epoch ${(model as MultiLayerNetwork).epochCount}")
+                }
+            })
+
+            //            addListeners(object : BaseTrainingListener() {
+            //                override fun onEpochEnd(model: Model?) {
+            //                    val model = model as MultiLayerNetwork
+            //                    val eval = model.evaluate(testIter)
+            //                    log.info(eval.stats())
+            //                    testIter.reset()
+            //                }
+            //            })
+        }
+
         log.debug("Total num of params: {}", net.numParams())
 
         // evaluation while training (the score should go down)
-        for (i in 0 until nEpochs) {
-            net.fit(trainIter)
-            log.info("Completed epoch {}", i)
-            val eval = net.evaluate(testIter)
-            log.info(eval.stats())
-            trainIter.reset()
-            testIter.reset()
-        }
+        net.fit(trainIter, nEpochs)
 
         ModelSerializer.writeModel(net, File("$basePath/minist-model.zip"), true)
     }
 }
+
+//fun main(args: Array<String>) {
+//
+//    val recordReader = CSVRecordReader(0, ',').apply{
+//        initialize(FileSplit(File("/Users/brandl/projects/deep_learning/dl4j/dl4j-test-resources/target/classes/iris.txt")))
+////        initialize(FileSplit(ClassPathResource("iris.txt").tempFileFromArchive))
+//    }
+//
+//    val iter = RecordReaderDataSetIterator.Builder(recordReader, 15)
+//        .classification(4, 3).build()
+//
+//    val next = iter.next()
+//
+//    println(next.features.shapeInfoToString())
+//
+//    println(next.labels.slice(0).toFloatVector().joinToString(","))
+//    println(next.features.slice(0).toFloatVector().joinToString(","))
+//
+//    println("first record is ${recordReader.apply { reset() }.next()}")
+//
+//}

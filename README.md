@@ -1,4 +1,6 @@
+# Kaggle MNIST
 
+Solutions for https://www.kaggle.com/c/digit-recognizer/data implemented with Kotlin.
 
 
 ## Data Prep
@@ -8,6 +10,8 @@ kaggle competitions download -c digit-recognizer
 
 ```
 
+
+![](.README_images/ee9bd57d.png)
 
 
 ## Processing
