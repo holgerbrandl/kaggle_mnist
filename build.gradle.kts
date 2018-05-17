@@ -67,8 +67,10 @@ dependencies {
     compile("org.slf4j", "slf4j-jdk14", "1.7.5")
     compile("org.apache.httpcomponents", "httpclient", "4.3.5")
 
-    compile("de.mpicbg.scicomp", "krangl", "0.10-SNAPSHOT")
-    compile("com.github.holgerbrandl", "kravis", "0.1-SNAPSHOT")
+    //    compile("de.mpicbg.scicomp", "krangl", "0.10-SNAPSHOT")
+    compile("de.mpicbg.scicomp", "krangl", "0.9.1")
+    //    compile("com.github.holgerbrandl", "kravis", "0.1-SNAPSHOT")
+    compile("com.github.holgerbrandl", "kravis", "0.2")
 
     compile("koma", "core", "0.11")
 
