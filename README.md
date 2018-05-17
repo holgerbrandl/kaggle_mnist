@@ -31,13 +31,16 @@ rsync --delete -avx ~/.m2/  brandl@talisker:~/.m2
 ```
 
 ```bash
-screen -R kaggle_mnist
+# screen -R kaggle_mnist
 
-cd ~/projects/deep_learning/kaggle_mnist
+PRJ_SCRIPTS=~/projects/deep_learning/kaggle_mnist
+
+cd ~/projects/deep_learning/kaggle_mnist_data
 
 # http://www.gubatron.com/blog/2017/07/20/how-to-run-your-kotlin-gradle-built-app-from-the-command-line/
 
-gradle run 2>&1 | tee kaggle_mnist.$(date +'%Y%m%d').log
+gradle -p ${PRJ_SCRIPTS} run 2>&1 | tee kaggle_mnist.$(date +'%Y%m%d').log
+
 mailme "mnist done in $(pwd)"
 
 ```

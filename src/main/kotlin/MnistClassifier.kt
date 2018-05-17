@@ -1,5 +1,5 @@
 import org.datavec.api.records.reader.impl.csv.CSVRecordReader
-import org.datavec.api.split.*
+import org.datavec.api.split.FileSplit
 import org.deeplearning4j.datasets.datavec.RecordReaderDataSetIterator
 import org.deeplearning4j.nn.api.Model
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration
@@ -14,10 +14,7 @@ import org.deeplearning4j.optimize.api.BaseTrainingListener
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener
 import org.deeplearning4j.util.ModelSerializer
 import org.nd4j.linalg.activations.Activation
-import org.nd4j.linalg.dataset.api.DataSet
-import org.nd4j.linalg.dataset.api.DataSetPreProcessor
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator
-import org.nd4j.linalg.dataset.api.preprocessor.NormalizerMinMaxScaler
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize
 import org.nd4j.linalg.learning.config.Nesterovs
 import org.nd4j.linalg.lossfunctions.LossFunctions
@@ -28,7 +25,7 @@ import java.io.File
 import java.util.*
 import kotlin.system.exitProcess
 
-/**
+/*
  * Adopted from https://github.com/holgerbrandl/dl4j-examples/blob/master/dl4j-examples/src/main/java/org/deeplearning4j/examples/convolution/mnist/MnistClassifier.java
  *
  * Handwritten digits image classification on MNIST dataset (99% accuracy).
@@ -41,77 +38,11 @@ import kotlin.system.exitProcess
  * @author holgerbrandl
  */
 
-fun createTrainRecReaderDataIterator(
-    batchSize: Int = 128,
-    maxExamples: Int = Int.MAX_VALUE
-): DataSetIterator {
-
-
-    //    var iter2: MultiDataSetIterator = RecordReaderMultiDataSetIterator.Builder(10).addReader("mnist_reader", recordReader)
-    //        .addInput("mnist_reader", 1, 784)
-    //        .addOutputOneHot("mnist_reader", 0, 10)
-    //        .build()
-    //
-    //    iter.next().features
-
-    // line format
-    // label,pixel0,pixel1,pixel2,pixel3,pixel4,pixel5, ... pixel783
-
-    val DATA_ROOT = File("${System.getProperty("user.home")}/.kaggle/competitions/digit-recognizer/")
-
-    //    val dataFile = File("mnist_subset.csv")
-    //            .also {
-    //                it.printWriter().let { pw ->
-    //                    File(DATA_ROOT, "train.csv").readLines().take(500).forEach { pw.println(it) }
-    //                    pw.close()
-    //                }
-    //            }
-
-    //    DataFrame.readCSV(dataFile).count("label").print()
-
-    val dataFile = File(DATA_ROOT, "train.csv")
-
-    val recordReader = CSVRecordReader(1, ',').apply {
-        initialize(FileSplit(dataFile))
-    }
-
-
-    val iter = RecordReaderDataSetIterator.Builder(recordReader, batchSize)
-        .classification(0, 10)
-        //        .preProcessor(NormalizerStandardize()).build()
-
-        // @AlexDBlack: normally a .setInputType(InputType.convolutionalFlat(...)) is all you need for that...
-        //        .preProcessor(object : DataSetPreProcessor {
-        //            override fun preProcess(ds: DataSet) {
-        //                println("shape is ${ds.features.shape().joinToString(",")}")
-        //                //                val zScaled = NormalizerStandardize().transform(ds)
-        //                val curBatchSize = ds.features.shape()[0]
-        //                ds.features = ds.features.reshape(ds.features.shape()[0], 1, 28, 28)
-        //                ds.features = ds.features.run{reshape(shape()[0], 1, 28, 28)}
-        ////                NormalizerMinMaxScaler().transform(ds)
-        //            }
-        //        })
-        .preProcessor {
-            // https://deeplearning4j.org/core-concepts#normalizing-data
-            NormalizerStandardize()
-                .apply { fit(it) }
-                .transform(it)
-        }
-        .build()
-
-    //    TransformProcessRecordReader(recordReader, object : TransformProcess() {})
-
-
-
-    return iter
-    //    return ExistingD    ataSetIterator(iter)
-}
 
 
 object MnistClassifier {
 
     private val log = LoggerFactory.getLogger(MnistClassifier::class.java)
-    private val basePath = System.getProperty("java.io.tmpdir") + "/mnist"
     //    private val dataUrl = "http://github.com/myleott/mnist_png/raw/master/mnist_png.tar.gz"
 
     val DATA_ROOT = File("${System.getProperty("user.home")}/.kaggle/competitions/digit-recognizer/")
@@ -131,7 +62,6 @@ object MnistClassifier {
         val randNumGen = Random(seed.toLong())
 
         log.info("Data load and vectorization...")
-        val localFilePath = "$basePath/mnist_png.tar.gz"
 
         if (!DATA_ROOT.isDirectory) {
             println("Kaggle data is not yet downloaded. See REAMDE.md ")
@@ -258,6 +188,81 @@ object MnistClassifier {
         trainIter.asyncSupported()
         net.fit(trainIter, nEpochs)
 
-        ModelSerializer.writeModel(net, File("$basePath/minist-model.zip"), true)
+        ModelSerializer.writeModel(net, File("kaggle-mnist-model.zip"), true)
+
+
+        //        log.info("Evaluate model....")
+        //        val eval = Evaluation(outputNum) //create an evaluation object with 10 possible classes
+        //        while (mnistTest.hasNext()) {
+        //            val next = mnistTest.next()
+        //            val output = model.output(next.features) //get the networks prediction
+        //            eval.eval(next.getLabels(), output) //check the prediction against the true class
+        //        }
+
     }
+}
+
+fun createTrainRecReaderDataIterator(
+    batchSize: Int = 128,
+    maxExamples: Int = Int.MAX_VALUE
+): DataSetIterator {
+
+
+    //    var iter2: MultiDataSetIterator = RecordReaderMultiDataSetIterator.Builder(10).addReader("mnist_reader", recordReader)
+    //        .addInput("mnist_reader", 1, 784)
+    //        .addOutputOneHot("mnist_reader", 0, 10)
+    //        .build()
+    //
+    //    iter.next().features
+
+    // line format
+    // label,pixel0,pixel1,pixel2,pixel3,pixel4,pixel5, ... pixel783
+
+    val DATA_ROOT = File("${System.getProperty("user.home")}/.kaggle/competitions/digit-recognizer/")
+
+    //    val dataFile = File("mnist_subset.csv")
+    //            .also {
+    //                it.printWriter().let { pw ->
+    //                    File(DATA_ROOT, "train.csv").readLines().take(500).forEach { pw.println(it) }
+    //                    pw.close()
+    //                }
+    //            }
+
+    //    DataFrame.readCSV(dataFile).count("label").print()
+
+    val dataFile = File(DATA_ROOT, "train.csv")
+
+    val recordReader = CSVRecordReader(1, ',').apply {
+        initialize(FileSplit(dataFile))
+    }
+
+
+    val iter = RecordReaderDataSetIterator.Builder(recordReader, batchSize)
+        .classification(0, 10)
+        //        .preProcessor(NormalizerStandardize()).build()
+
+        // @AlexDBlack: normally a .setInputType(InputType.convolutionalFlat(...)) is all you need for that...
+        //        .preProcessor(object : DataSetPreProcessor {
+        //            override fun preProcess(ds: DataSet) {
+        //                println("shape is ${ds.features.shape().joinToString(",")}")
+        //                //                val zScaled = NormalizerStandardize().transform(ds)
+        //                val curBatchSize = ds.features.shape()[0]
+        //                ds.features = ds.features.reshape(ds.features.shape()[0], 1, 28, 28)
+        //                ds.features = ds.features.run{reshape(shape()[0], 1, 28, 28)}
+        ////                NormalizerMinMaxScaler().transform(ds)
+        //            }
+        //        })
+        .preProcessor {
+            // https://deeplearning4j.org/core-concepts#normalizing-data
+            NormalizerStandardize()
+                .apply { fit(it) }
+                .transform(it)
+        }
+        .build()
+
+    //    TransformProcessRecordReader(recordReader, object : TransformProcess() {})
+
+
+    return iter
+    //    return ExistingD    ataSetIterator(iter)
 }
