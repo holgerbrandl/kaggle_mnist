@@ -254,7 +254,7 @@ object PrepareSubmission {
 
 
         val iter = RecordReaderDataSetIterator.Builder(recordReader, 128)
-            .classification(-1, 10)
+            //            .classification(-1, 10)
             //        .classification(0, 10)
             .preProcessor {
                 // https://deeplearning4j.org/core-concepts#normalizing-data
@@ -275,17 +275,14 @@ object PrepareSubmission {
         val submissionTestFile = File(MNIST_DATA_ROOT, "test.csv")
         val testIter = createTestIter(submissionTestFile)
 
-        println(testIter.next())
-
         log.info("Processing submission test data....")
 
         val results = testIter.asSequence().map { ds ->
+            ds.labelNames = (1..10).map { it.toString() }
+
             model.predict(ds)
         }.flatten()
 
-        //        for (dataSet in testIter) {
-        //            model.predict(dataSet)
-        //        }
         // expected format
         //        ImageId,Label
         //        1,0
