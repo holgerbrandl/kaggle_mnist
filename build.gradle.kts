@@ -17,6 +17,20 @@ plugins {
     application
 }
 
+// for install task
+//    maven
+
+
+// example see https://gist.github.com/hastebrot/e6d34c220659ff2f6d96ab54131732bc
+//val sourceSets = java.sourceSets
+//
+//sourceSets {
+//    main {
+//        java.sourceDirs = files("src")
+//        kotlin.sourceDirs = files("src")
+//    }
+//}
+
 group = "com.github.holgerbrandl.dl"
 version = "1.0-SNAPSHOT"
 

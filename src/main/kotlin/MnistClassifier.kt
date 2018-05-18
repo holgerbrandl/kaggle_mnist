@@ -1,6 +1,7 @@
 import org.datavec.api.records.reader.impl.csv.CSVRecordReader
 import org.datavec.api.split.FileSplit
 import org.deeplearning4j.datasets.datavec.RecordReaderDataSetIterator
+import org.deeplearning4j.eval.Evaluation
 import org.deeplearning4j.nn.api.Model
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration
 import org.deeplearning4j.nn.conf.inputs.InputType
@@ -22,7 +23,9 @@ import org.nd4j.linalg.schedule.MapSchedule
 import org.nd4j.linalg.schedule.ScheduleType
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.nio.file.Files
 import java.util.*
+import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 
 /*
@@ -38,14 +41,14 @@ import kotlin.system.exitProcess
  * @author holgerbrandl
  */
 
+private val log = LoggerFactory.getLogger(MnistClassifier::class.java)
+
+val MNIST_DATA_ROOT = File("${System.getProperty("user.home")}/.kaggle/competitions/digit-recognizer/")
 
 
 object MnistClassifier {
 
-    private val log = LoggerFactory.getLogger(MnistClassifier::class.java)
     //    private val dataUrl = "http://github.com/myleott/mnist_png/raw/master/mnist_png.tar.gz"
-
-    val DATA_ROOT = File("${System.getProperty("user.home")}/.kaggle/competitions/digit-recognizer/")
 
 
     @Throws(Exception::class)
@@ -58,17 +61,20 @@ object MnistClassifier {
         val nEpochs = 1
         val batchSize = 128
 
+
+        File(System.getProperty("user.dir"), "test.txt").writeText("hello from in here")
+
         val seed = 1234
-        val randNumGen = Random(seed.toLong())
+        //        val randNumGen = Random(seed.toLong())
 
         log.info("Data load and vectorization...")
 
-        if (!DATA_ROOT.isDirectory) {
+        if (!MNIST_DATA_ROOT.isDirectory) {
             println("Kaggle data is not yet downloaded. See REAMDE.md ")
             exitProcess(-1)
         }
 
-        val trainIter = createTrainRecReaderDataIterator(batchSize = batchSize)
+        val trainIter = createTrainDataIt(batchSize = batchSize, dataSet = DataSplit.TRAIN)
         //        val feature = trainIter.next().features.slice(0)
 
         //    // plot one of them
@@ -184,8 +190,9 @@ object MnistClassifier {
 
         log.debug("Total num of params: {}", net.numParams())
 
+        //        net.params().toDoubleMatrix().
+
         // evaluation while training (the score should go down)
-        trainIter.asyncSupported()
         net.fit(trainIter, nEpochs)
 
         ModelSerializer.writeModel(net, File("kaggle-mnist-model.zip"), true)
@@ -202,9 +209,114 @@ object MnistClassifier {
     }
 }
 
-fun createTrainRecReaderDataIterator(
+
+object ModelEval {
+
+    @JvmStatic
+    fun main(args: Array<String>) {
+        //        ModelSerializer.writeModel(net, File("kaggle-mnist-model.zip"), true)
+
+        val model = MultiLayerNetwork.load(File("kaggle-mnist-model.zip"), false)
+
+        val mnistTest = createTrainDataIt(dataSet = DataSplit.TEST)
+
+
+        log.info("Evaluate model....")
+        val eval = Evaluation(10) //create an evaluation object with 10 possible classes
+        while (mnistTest.hasNext()) {
+            mnistTest.reset()
+            val next = mnistTest.next()
+            val output = model.output(next.features) //get the networks prediction
+            eval.eval(next.getLabels(), output) //check the prediction against the true class
+        }
+
+
+        println(eval.confusionMatrix.toHTML())
+
+        //http://scikit-learn.org/stable/modules/generated/sklearn.metrics.f1_score.html
+        // weighted average for multi-class problems
+        println("${eval.f1()}")
+
+        println(eval.f1())
+    }
+}
+
+
+object PrepareSubmission {
+
+
+    fun createTestIter(dataFile: File): DataSetIterator {
+        require(dataFile.exists()) { "data file $dataFile does not exist" }
+
+        val recordReader = CSVRecordReader(1, ',').apply {
+            initialize(FileSplit(dataFile))
+        }
+
+
+        val iter = RecordReaderDataSetIterator.Builder(recordReader, 128)
+            .classification(-1, 10)
+            //        .classification(0, 10)
+            .preProcessor {
+                // https://deeplearning4j.org/core-concepts#normalizing-data
+                NormalizerStandardize()
+                    .apply { fit(it) }
+                    .transform(it)
+            }
+            .build()
+
+        return iter
+    }
+
+
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val model = MultiLayerNetwork.load(File("kaggle-mnist-model.zip"), false)
+
+        val submissionTestFile = File(MNIST_DATA_ROOT, "test.csv")
+        val testIter = createTestIter(submissionTestFile)
+
+        println(testIter.next())
+
+        log.info("Processing submission test data....")
+
+        val results = testIter.asSequence().map { ds ->
+            model.predict(ds)
+        }.flatten()
+
+        //        for (dataSet in testIter) {
+        //            model.predict(dataSet)
+        //        }
+        // expected format
+        //        ImageId,Label
+        //        1,0
+        //        2,0
+        //        3,0
+
+        val submissionFile = File("kaggle_mnist_submission.txt")
+
+        submissionFile.printWriter().use { pw ->
+            // the submission format should be business_id to labels
+            pw.write("ImageId\tLabel\n")
+
+            results.withIndex().forEach {
+                pw.write("${it.index},${it.value}\n")
+            }
+        }
+
+        val totalRecords = Files.lines(submissionTestFile.toPath()).count();
+        val totalSubmission = Files.lines(submissionFile.toPath()).count();
+
+        print("total: ${totalRecords} vs submissions ${totalSubmission}")
+    }
+}
+
+enum class DataSplit { TRAIN, CV, TEST }
+
+fun createTrainDataIt(
     batchSize: Int = 128,
-    maxExamples: Int = Int.MAX_VALUE
+    //    maxExamples: Int = Int.MAX_VALUE,
+    dataSet: DataSplit = DataSplit.TRAIN
+
 ): DataSetIterator {
 
 
@@ -218,7 +330,7 @@ fun createTrainRecReaderDataIterator(
     // line format
     // label,pixel0,pixel1,pixel2,pixel3,pixel4,pixel5, ... pixel783
 
-    val DATA_ROOT = File("${System.getProperty("user.home")}/.kaggle/competitions/digit-recognizer/")
+    //    val DATA_ROOT = File("${System.getProperty("user.home")}/.kaggle/competitions/digit-recognizer/")
 
     //    val dataFile = File("mnist_subset.csv")
     //            .also {
@@ -230,10 +342,18 @@ fun createTrainRecReaderDataIterator(
 
     //    DataFrame.readCSV(dataFile).count("label").print()
 
-    val dataFile = File(DATA_ROOT, "train.csv")
+    //// actual kaggle set without any cross-val subset
+    //    val dataFile = File(MNIST_DATA_ROOT, "train.csv")
+
+    val dataFile = File("train.split_${dataSet.name.toLowerCase()}.csv")
+    require(dataFile.exists()) { "data file ${dataFile} does not exist" }
+
 
     val recordReader = CSVRecordReader(1, ',').apply {
-        initialize(FileSplit(dataFile))
+        val fileSplit = FileSplit(dataFile)
+
+        //        val splitInput = fileSplit.sample(null, 0.7, 0.2, 0.1)
+        initialize(fileSplit)
     }
 
 
@@ -265,4 +385,34 @@ fun createTrainRecReaderDataIterator(
 
     return iter
     //    return ExistingD    ataSetIterator(iter)
+}
+
+
+// AlexDBlack: for something like CSV, you usually split it ahead of time - i.e., create new CSVs, one for training, one for test
+object TrainDataSplit {
+
+    @JvmStatic
+    fun main(args: Array<String>) {
+
+        fun writeTrainSplit(dataFile: File, it: Sequence<String>, subset: String) {
+            File(dataFile.nameWithoutExtension + ".split_$subset.csv").writeText(it.joinToString("\n"))
+        }
+
+
+        //         split train.csv manually into train, validation and test set
+        val dataFile = File(MNIST_DATA_ROOT, "train.csv")
+
+        //    val totalRecords = Files.lines(dataFile.toPath()).count();
+
+
+        dataFile.readLines()
+            //            .shuffled()
+            .run {
+                val iter = iterator()
+
+                iter.asSequence().take((size * 0.7).roundToInt()).let { writeTrainSplit(dataFile, it, "train") }
+                iter.asSequence().take((size * 0.15).roundToInt()).let { writeTrainSplit(dataFile, it, "cv") }
+                iter.asSequence().let { writeTrainSplit(dataFile, it, "test") }
+            }
+    }
 }

@@ -24,7 +24,7 @@ srcDir=$(pwd | sed 's/\/Users\/brandl//g')
 # continue here
 }
 
-rsync --delete -avx --exclude target --exclude build --exclude project ~/projects/deep_learning/kaggle_mnist/ brandl@talisker:~/projects/deep_learning/kaggle_mnist
+rsync --delete -avx --exclude .git --exclude target --exclude build --exclude project ~/projects/deep_learning/kaggle_mnist/ brandl@talisker:~/projects/deep_learning/kaggle_mnist
 
 rsync --delete -avx ~/.m2/  brandl@talisker:~/.m2
 
@@ -35,15 +35,23 @@ rsync --delete -avx ~/.m2/  brandl@talisker:~/.m2
 
 PRJ_SCRIPTS=~/projects/deep_learning/kaggle_mnist
 
-cd ~/projects/deep_learning/kaggle_mnist_data
+cd ~/projects/data/kaggle_mnist_data
 
 # http://www.gubatron.com/blog/2017/07/20/how-to-run-your-kotlin-gradle-built-app-from-the-command-line/
 
 gradle -p ${PRJ_SCRIPTS} run 2>&1 | tee kaggle_mnist.$(date +'%Y%m%d').log
 
+gradle build
+${PRJ_SCRIPTS}/prj_shell.sh
+
 mailme "mnist done in $(pwd)"
 
 ```
+
+to run without gradle (better progress etc)
+```
+gradle gradle -p ${PRJ_SCRIPTS} distZip 
+````
 
 
 ## Cuda support
